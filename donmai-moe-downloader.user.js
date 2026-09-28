@@ -1,9 +1,11 @@
 // ==UserScript==
-// @name         Donmai.moe 一键下载原图
+// @name         Donmai 一键下载原图（danbooru / donmai.moe）
 // @namespace    https://github.com/kitsuneMori96/donmai-moe-downloader
-// @version      0.3.0
+// @version      0.4.0
 // @description  列表页缩略图右下角加下载按钮（下载原图并自动收藏），详情页大图角落 + Information Size 行加按钮，可配下载子目录与文件名模板
 // @author       kitsuneMori96
+// @match        https://danbooru.donmai.us/posts*
+// @match        https://danbooru.donmai.us/posts/*
 // @match        https://donmai.moe/posts*
 // @match        https://donmai.moe/posts/*
 // @grant        GM_download
@@ -11,6 +13,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @connect      danbooru.donmai.us
 // @connect      donmai.moe
 // @connect      cdn.donmai.us
 // @run-at       document-idle
@@ -20,7 +23,7 @@
 (function () {
   'use strict';
 
-  /* 真实 DOM（2026-09-28 有头 Chrome 实测）：
+  /* 真实 DOM（2026-09-28 有头 Chrome 于 donmai.moe 实测；danbooru.donmai.us 为上游同源代码，选择器一致）：
    * 列表: .posts-container > article.post-preview[data-id="10872602"] > div.post-preview-container
    *       > a.post-preview-link[href="/posts/ID"] > picture > img.post-preview-image[src=180x180预览]
    *       注：缩略图 img 无原图地址，必须调 /posts/:id.json 取 file_url

@@ -1,6 +1,6 @@
-# donmai-moe-downloader
+# donmai-downloader
 
-Tampermonkey 油猴脚本：给 `donmai.moe` 加一键下载原图按钮。
+Tampermonkey 油猴脚本：给 `danbooru.donmai.us`（主站）与 `donmai.moe`（镜像，同源代码）加一键下载原图按钮。
 
 ## 功能
 
