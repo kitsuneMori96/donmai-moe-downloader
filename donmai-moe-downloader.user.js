@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Donmai.moe 一键下载原图
 // @namespace    https://github.com/kitsuneMori96/donmai-moe-downloader
-// @version      0.2.0
-// @description  列表页缩略图右下角加下载按钮（下载原图），详情页大图角落 + Information Size 行加按钮，可配下载子目录与文件名模板
+// @version      0.3.0
+// @description  列表页缩略图右下角加下载按钮（下载原图并自动收藏），详情页大图角落 + Information Size 行加按钮，可配下载子目录与文件名模板
 // @author       kitsuneMori96
 // @match        https://donmai.moe/posts*
 // @match        https://donmai.moe/posts/*
@@ -66,6 +66,7 @@
     dir: GM_getValue('dl_dir', 'donmai'),          // 下载子目录，为空 = 直接放下载根目录
     tpl: GM_getValue('name_tpl', '{tag}_{id}'),    // 文件名模板，支持 {tag} {id}
     saveAs: GM_getValue('save_as', false),         // 每次下载都弹出另存为对话框
+    autoFav: GM_getValue('auto_fav', true),          // 点击下载时自动收藏该图
   };
 
   function sanitizeDir(d) {
@@ -97,6 +98,11 @@
         CFG.tpl = v.trim();
         GM_setValue('name_tpl', CFG.tpl);
         alert('已保存，示例：' + examplePath());
+      });
+      GM_registerMenuCommand('⚙ 下载时自动收藏（当前: ' + (CFG.autoFav ? '开' : '关') + '）', () => {
+        CFG.autoFav = !CFG.autoFav;
+        GM_setValue('auto_fav', CFG.autoFav);
+        alert('下载时自动收藏：' + (CFG.autoFav ? '开' : '关'));
       });
       GM_registerMenuCommand('⚙ 下载时询问保存位置（当前: ' + (CFG.saveAs ? '开' : '关') + '）', () => {
         CFG.saveAs = !CFG.saveAs;
@@ -163,8 +169,47 @@
     return b;
   }
 
+  /* ---------- 自动收藏 ----------
+   * 真实 DOM（登录态实测）：li#post-option-add-to-favorites > a#add-to-favorites[href="/favorites?post_id=ID"]（未收藏时可见）
+   * li#post-option-remove-from-favorites > a#remove-from-favorites[href="/favorites/ID"]（已收藏时可见）
+   * 接口：POST /favorites?post_id=ID → 201；重复收藏 → 422（无副作用）；未登录 → 401/302。均静默处理，绝不阻塞下载。
+   */
+  function isDetailFavorited() {
+    const rm = document.querySelector('#remove-from-favorites');
+    return !!rm && getComputedStyle(rm).display !== 'none';
+  }
+
+  function syncDetailFavUI() {
+    const add = document.querySelector('#add-to-favorites');
+    const rm = document.querySelector('#remove-from-favorites');
+    if (add) add.style.display = 'none';
+    if (rm) rm.style.display = '';
+    const cnt = document.querySelector('.post-favcount a');
+    if (cnt && /^\d+$/.test(cnt.textContent.trim())) cnt.textContent = String(Number(cnt.textContent.trim()) + 1);
+  }
+
+  async function autoFav(id, btn) {
+    if (!CFG.autoFav) return;
+    try {
+      // 详情页可用 DOM 直接判断，避免重复请求
+      if (document.querySelector('#post-options') && isDetailFavorited()) return;
+      const token = document.querySelector('meta[name=csrf-token]')?.content;
+      if (!token) return; // 无 token = 未登录或异常页，静默跳过
+      const r = await fetch(`/favorites?post_id=${id}`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'X-CSRF-Token': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+      });
+      if (r.status === 201 || r.status === 200) {
+        if (btn) { const old = btn.textContent; btn.textContent = '♥'; setTimeout(() => { btn.textContent = old; }, 1500); }
+        if (document.querySelector('#post-options')) syncDetailFavUI();
+      }
+      // 422 已收藏 / 401 未登录 / 其他：全部静默，不管
+    } catch (_) { /* 网络异常静默，下载不受影响 */ }
+  }
+
   async function downloadById(id, btn) {
     btn.classList.add('loading');
+    autoFav(id, btn); // 与下载并行，不阻塞
     try {
       const url = await resolveFileUrl(id);
       triggerDownload(url, fileName(id, url));
@@ -209,7 +254,7 @@
       b.className = 'donmai-dl-btn-inline';
       b.textContent = '↓原图';
       b.title = sizeLink.href;
-      b.addEventListener('click', () => triggerDownload(sizeLink.href, fileName(id, sizeLink.href)));
+      b.addEventListener('click', () => { autoFav(id, null); triggerDownload(sizeLink.href, fileName(id, sizeLink.href)); });
       sizeLink.after(b);
     }
     // 2) 大图右下角悬浮按钮：section.image-container[data-file-url] / img#image
@@ -222,7 +267,7 @@
       btn.addEventListener('click', async (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
-        if (direct) triggerDownload(direct, fileName(id, direct));
+        if (direct) { autoFav(id, btn); triggerDownload(direct, fileName(id, direct)); }
         else await downloadById(id, btn);
       });
       wrap.appendChild(btn);
