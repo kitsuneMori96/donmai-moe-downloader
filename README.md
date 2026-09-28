@@ -4,9 +4,9 @@ Tampermonkey 油猴脚本：给 `donmai.moe` 加一键下载原图按钮。
 
 ## 功能
 
-- 列表页（`/posts?tags=...`）：每张缩略图右下角 `⬇` 按钮，点击通过 `/posts/:id.json` 取 `file_url` 下载**原图**（不跳转详情页）。
-- 详情页（`/posts/:id`）：大图右下角悬浮按钮 + `Information > Size` 行内 `⬇下载原图` 按钮，直链即 `#post-info-size a[href*=cdn.donmai.us]`。
-- 文件名：`tag_ID.扩展名`，如 `neuro-sama_10855187.jpg`。
+- 列表页（`/posts?tags=...`）：每张缩略图右下角悬停浮现的半透明小圆点 `↓`，点击通过 `/posts/:id.json` 取 `file_url` 下载**原图**（不跳转详情页）。
+- 详情页（`/posts/:id`）：大图右下角同款悬浮按钮 + `Information > Size` 行内弱化文字链 `↓原图`，直链即 `#post-info-size a[href*=cdn.donmai.us]`。
+- 默认下载位置：Tampermonkey 菜单可设**下载子目录**（如 `donmai/neuro-sama`，文件落在浏览器默认下载目录下的该子文件夹；浏览器安全限制，脚本无法指定磁盘绝对路径）、**文件名模板**（`{tag}_{id}`，默认 `neuro-sama_10855187.jpg`）、**每次询问保存位置**开关。
 
 ## 真实 DOM（Cloudflare 后实测）
 

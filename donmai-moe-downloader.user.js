@@ -1,13 +1,16 @@
 // ==UserScript==
 // @name         Donmai.moe 一键下载原图
 // @namespace    https://github.com/kitsuneMori96/donmai-moe-downloader
-// @version      0.1.0
-// @description  列表页缩略图右下角加下载按钮（下载原图），详情页大图角落 + Information Size 行加按钮，文件名 tag_ID.扩展名
+// @version      0.2.0
+// @description  列表页缩略图右下角加下载按钮（下载原图），详情页大图角落 + Information Size 行加按钮，可配下载子目录与文件名模板
 // @author       kitsuneMori96
 // @match        https://donmai.moe/posts*
 // @match        https://donmai.moe/posts/*
 // @grant        GM_download
 // @grant        GM_addStyle
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
 // @connect      donmai.moe
 // @connect      cdn.donmai.us
 // @run-at       document-idle
@@ -28,21 +31,80 @@
    */
 
   GM_addStyle(`
+    /* 含蓄风格：平时几乎不可见，悬停宿主才浮现；小圆点 + 毛玻璃 + 低对比 */
     .donmai-dl-btn {
-      position: absolute; right: 4px; bottom: 4px; z-index: 50;
-      width: 24px; height: 24px; line-height: 24px; text-align: center;
-      font-size: 14px; border-radius: 6px; cursor: pointer;
-      background: rgba(0,0,0,.65); color: #fff; border: 1px solid rgba(255,255,255,.35);
+      position: absolute; right: 6px; bottom: 6px; z-index: 20;
+      width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
+      font-size: 11px; line-height: 1; border-radius: 9999px; cursor: pointer;
+      background: rgba(18, 20, 26, .38); color: rgba(255, 255, 255, .82);
+      border: 1px solid rgba(255, 255, 255, .14);
+      opacity: 0; transform: scale(.9); pointer-events: none;
+      transition: opacity .18s ease, transform .18s ease, background .18s ease;
+      backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
       text-decoration: none !important; user-select: none;
     }
-    .donmai-dl-btn:hover { background: rgba(20,120,255,.9); }
-    .donmai-dl-btn.loading { pointer-events: none; opacity: .6; }
+    .donmai-dl-anchor:hover .donmai-dl-btn,
+    section.image-container:hover .donmai-dl-btn { opacity: .8; pointer-events: auto; }
+    .donmai-dl-btn:hover { opacity: 1 !important; background: rgba(18, 20, 26, .72); transform: scale(1); }
+    .donmai-dl-btn.loading { opacity: .8; pointer-events: none; animation: donmai-dl-pulse 1s ease-in-out infinite; }
+    @keyframes donmai-dl-pulse { 50% { transform: scale(.85); } }
+    @media (hover: none) { .donmai-dl-btn { opacity: .65; pointer-events: auto; } }
     .donmai-dl-anchor { position: relative; display: block; }
+    /* 详情页 Size 行：弱化的文字链风格，不抢视觉 */
     #post-info-size .donmai-dl-btn-inline {
-      margin-left: 6px; font-size: 12px; padding: 0 6px; border-radius: 4px;
-      background: #2b6cb0; color: #fff; cursor: pointer; border: none;
+      margin-left: 6px; font-size: 12px; padding: 0 2px; cursor: pointer;
+      background: none; border: none; color: inherit; opacity: .5; text-decoration: underline dotted;
     }
+    #post-info-size .donmai-dl-btn-inline:hover { opacity: 1; }
   `);
+
+  /* ---------- 可配下载位置 ---------- */
+  // 说明：浏览器安全限制下，油猴脚本无法指定磁盘绝对路径。
+  // GM_download 的 name 支持相对子目录（如 "donmai/xxx.jpg"），文件会落在
+  // 浏览器默认下载目录下的该子文件夹里；这就是本脚本的“默认下载位置”。
+  const CFG = {
+    dir: GM_getValue('dl_dir', 'donmai'),          // 下载子目录，为空 = 直接放下载根目录
+    tpl: GM_getValue('name_tpl', '{tag}_{id}'),    // 文件名模板，支持 {tag} {id}
+    saveAs: GM_getValue('save_as', false),         // 每次下载都弹出另存为对话框
+  };
+
+  function sanitizeDir(d) {
+    return String(d || '')
+      .replace(/\\/g, '/').split('/')
+      .map(s => s.replace(/[\0-\x1f<>:\"|?*]+/g, '').trim().replace(/^\.+$/, ''))
+      .filter(s => s && s !== '.' && s !== '..')
+      .slice(0, 5).join('/');
+  }
+
+  function examplePath() {
+    const dir = sanitizeDir(CFG.dir);
+    const name = CFG.tpl.replace('{tag}', currentTag()).replace('{id}', '10855187') + '.jpg';
+    return (dir ? dir + '/' : '') + name;
+  }
+
+  function registerMenu() {
+    try {
+      GM_registerMenuCommand('⚙ 设置下载子目录（当前: ' + (sanitizeDir(CFG.dir) || '(根目录)') + '）', () => {
+        const v = prompt('下载子目录（相对浏览器默认下载目录，可多级如 donmai/neuro-sama，留空=根目录）:', CFG.dir);
+        if (v === null) return;
+        CFG.dir = v;
+        GM_setValue('dl_dir', v);
+        alert('已保存，之后文件如：' + examplePath());
+      });
+      GM_registerMenuCommand('⚙ 设置文件名模板（当前: ' + CFG.tpl + '）', () => {
+        const v = prompt('文件名模板，支持 {tag} {id}，扩展名自动追加:', CFG.tpl);
+        if (v === null || !v.trim()) return;
+        CFG.tpl = v.trim();
+        GM_setValue('name_tpl', CFG.tpl);
+        alert('已保存，示例：' + examplePath());
+      });
+      GM_registerMenuCommand('⚙ 下载时询问保存位置（当前: ' + (CFG.saveAs ? '开' : '关') + '）', () => {
+        CFG.saveAs = !CFG.saveAs;
+        GM_setValue('save_as', CFG.saveAs);
+        alert('每次询问保存位置：' + (CFG.saveAs ? '开' : '关'));
+      });
+    } catch (_) { /* 非 Tampermonkey 环境忽略 */ }
+  }
 
   const fileUrlCache = new Map(); // id -> file_url
 
@@ -57,14 +119,17 @@
 
   function fileName(id, fileUrl) {
     const ext = (fileUrl.split('?')[0].split('.').pop() || 'jpg').toLowerCase().slice(0, 5);
-    return `${currentTag()}_${id}.${ext}`;
+    const base = CFG.tpl.replace('{tag}', currentTag()).replace('{id}', String(id))
+      .replace(/[\\/:*?"<>|]/g, '_').trim() || `${currentTag()}_${id}`;
+    const dir = sanitizeDir(CFG.dir);
+    return (dir ? dir + '/' : '') + `${base}.${ext}`;
   }
 
   function triggerDownload(url, name) {
     // 优先 GM_download（可跨域到 cdn.donmai.us，需 @connect 放行）
     try {
       if (typeof GM_download === 'function') {
-        GM_download({ url, name, saveAs: false });
+        GM_download({ url, name, saveAs: !!CFG.saveAs });
         return;
       }
     } catch (_) { /* fallthrough */ }
@@ -92,7 +157,7 @@
   function makeBtn(title) {
     const b = document.createElement('a');
     b.className = 'donmai-dl-btn';
-    b.textContent = '⬇';
+    b.textContent = '↓';
     b.title = title || '下载原图';
     b.href = 'javascript:void(0)';
     return b;
@@ -142,7 +207,7 @@
       sizeLink.dataset.dlDone = '1';
       const b = document.createElement('button');
       b.className = 'donmai-dl-btn-inline';
-      b.textContent = '⬇下载原图';
+      b.textContent = '↓原图';
       b.title = sizeLink.href;
       b.addEventListener('click', () => triggerDownload(sizeLink.href, fileName(id, sizeLink.href)));
       sizeLink.after(b);
@@ -170,6 +235,7 @@
   }
 
   run();
+  registerMenu();
   // 翻页 / 无限滚动 / pjax
   new MutationObserver(run).observe(document.documentElement, { childList: true, subtree: true });
 })();
